@@ -89,6 +89,7 @@ autoplot(stopping_rs) +
   theme_minimal()
 
 show_best(stopping_rs, metric = "roc_auc")
+show_best(stopping_rs, metric = "accuracy")
 
 stopping_fit <- lr_wf |>
   finalize_workflow(select_best(stopping_rs, "roc_auc")) |>

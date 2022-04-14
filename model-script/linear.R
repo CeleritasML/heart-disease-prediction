@@ -57,52 +57,25 @@ heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
 
 prep(heart_recipe)
 
-lr_model <- logistic_reg(penalty = tune(), mixture = tune()) %>%
-  set_engine("glmnet")
-
-stopping_grid <- lr_model |>
-  parameters() |>
-  grid_max_entropy(size = 10)
-
-# Workflow
+lr_model <- logistic_reg() %>%
+  set_engine("glm") %>%
+  set_mode("classification")
 
 lr_wf <- workflow(heart_recipe, lr_model)
 
 doParallel::registerDoParallel()
 
-set.seed(1234)
-tic("total")
-tic("tune grid")
-stopping_rs <- tune_grid(
-  lr_wf,
-  heart_folds,
-  grid = stopping_grid,
-  metrics = heart_metrics
-)
-toc()
-toc()
-
-# approximately 900 seconds
-
-autoplot(stopping_rs) +
-  geom_line() +
-  theme_minimal()
-
-show_best(stopping_rs, metric = "roc_auc")
-show_best(stopping_rs, metric = "accuracy")
-
-stopping_fit <- lr_wf |>
-  finalize_workflow(select_best(stopping_rs, "roc_auc")) |>
+lr_fit <- lr_wf |>
   last_fit(heart_split)
 
-collect_metrics(stopping_fit)
+collect_metrics(lr_fit)
 
-extract_workflow(stopping_fit) |>
+extract_workflow(lr_fit) |>
   extract_fit_parsnip() |>
-  vip(num_features = 17, geom = "point") +
+  vip(num_features = 10, geom = "point") +
   theme_minimal()
 
-collect_predictions(stopping_fit) |>
+collect_predictions(lr_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   ggplot(aes(1 - specificity, sensitivity)) +
   geom_abline(lty = 2, color = "gray80", size = 1.5) +
@@ -110,7 +83,7 @@ collect_predictions(stopping_fit) |>
   coord_equal() +
   labs(color = NULL)
 
-collect_predictions(stopping_fit) |>
+collect_predictions(lr_fit) |>
   conf_mat(heart_disease, .pred_class) |>
   autoplot()
 

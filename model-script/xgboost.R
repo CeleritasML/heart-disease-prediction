@@ -2,6 +2,31 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, tidymodels, janitor,
                skimr, tictoc, vip)
 
+font_add_google(name = "Roboto Mono", family = "Roboto Mono")
+
+# Set ggplot theme
+theme_set(theme_minimal(base_family = "Roboto Mono"))
+theme_update(
+  panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+  plot.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+  panel.border = element_rect(fill = NA, color = NA),
+  panel.grid.major.x = element_blank(),
+  panel.grid.major.y = element_line(linetype = "dashed"),
+  panel.grid.minor = element_blank(),
+  panel.grid = element_line(color = "#b4aea9"),
+  axis.text.x = element_text(size = 10),
+  axis.text.y = element_text(size = 10),
+  axis.title.x = element_text(size = 13, colour = "#495057", face = "bold"),
+  axis.title.y = element_text(size = 13, colour = "#495057",  margin = margin(r = 10), face = "bold"),
+  axis.line = element_line(colour = "grey50"),
+  legend.title = element_text(size = 13, face = "bold", colour = "#495057"),
+  legend.text = element_text(size = 10, color = "#495057"), 
+  plot.title = element_text(hjust = 0.5, size = 15, face = "bold", color = "#2a475e"),
+  plot.caption = element_text(family = "Special Elite", size = 10, color = "grey70", face = "bold",
+                              hjust = .5, margin = margin(5, 0, 20, 0)),
+  plot.margin = margin(10, 25, 10, 25),
+)
+
 dat <- read_csv("data/heart_2020_cleaned.csv") |>
   clean_names()
 
@@ -95,8 +120,7 @@ toc()
 # approximately 1000 seconds
 
 autoplot(stopping_rs) +
-  geom_line() +
-  theme_minimal()
+  geom_line()
 
 show_best(stopping_rs, metric = "roc_auc")
 
@@ -108,14 +132,13 @@ collect_metrics(stopping_fit)
 
 extract_workflow(stopping_fit) |>
   extract_fit_parsnip() |>
-  vip(num_features = 17, geom = "point") +
-  theme_minimal()
+  vip(num_features = 15, geom = "point")
 
 collect_predictions(stopping_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   ggplot(aes(1 - specificity, sensitivity)) +
   geom_abline(lty = 2, color = "gray80", size = 1.5) +
-  geom_path(alpha = 0.8, size = 1, color = "royalblue") +
+  geom_path(alpha = 0.8, size = 1, color = "grey") +
   coord_equal() +
   labs(color = NULL)
 

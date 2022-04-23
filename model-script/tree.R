@@ -97,7 +97,6 @@ heart_folds <- vfold_cv(heart_cv, v = 10, strata = heart_disease)
 
 # precautionary step to remove variables only containing a single value
 heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
-  step_dummy(all_nominal_predictors(), one_hot=TRUE) |>
   step_zv(all_predictors()) 
 
 prep(heart_recipe)

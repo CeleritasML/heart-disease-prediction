@@ -6,10 +6,10 @@ dat <- read_csv("data/heart_2020_cleaned.csv") |>
 
 dat <- dat |>
   mutate(heart_disease = as_factor(heart_disease),
-         smoking = as_factor(smoking),
-         alcohol_drinking = as_factor(alcohol_drinking),
-         stroke = as_factor(stroke),
-         diff_walking = as_factor(diff_walking),
+         smoking = if_else(smoking == "Yes", 1, 0),
+         alcohol_drinking = if_else(alcohol_drinking == "Yes", 1, 0),
+         stroke = if_else(stroke == "Yes", 1, 0),
+         diff_walking = if_else(diff_walking == "Yes", 1, 0),
          sex = as_factor(sex),
          age_category = factor(age_category,
                                levels = c("18-24", "25-29", "30-34", "35-39",
@@ -18,12 +18,12 @@ dat <- dat |>
                                           "80 or older")),
          race = as_factor(race),
          diabetic = as_factor(diabetic),
-         physical_activity = as_factor(physical_activity),
+         physical_activity = if_else(physical_activity == "Yes", 1, 0),
          gen_health = factor(gen_health,
                              levels = c("Poor", "Fair", "Good", "Very good", "Excellent")),
-         asthma = as_factor(asthma),
-         kidney_disease = as_factor(kidney_disease),
-         skin_cancer = as_factor(skin_cancer))
+         asthma = if_else(asthma == "Yes", 1, 0),
+         kidney_disease = if_else(skin_cancer == "Yes", 1, 0),
+         skin_cancer = if_else(skin_cancer == "Yes", 1, 0))
 
 
 tidymodels_prefer()
@@ -80,6 +80,10 @@ collect_predictions(lr_fit) |>
   pr_curve(heart_disease, .pred_Yes, event_level="second") |>
   write_csv("data/linear_prc.csv")
 
+extract_workflow(lr_fit) |>
+  extract_fit_parsnip() |>
+  vip::vi() |>
+  knitr::kable()
 extract_workflow(lr_fit) |>
   extract_fit_parsnip() |>
   vip(num_features = 10, geom = "point") +

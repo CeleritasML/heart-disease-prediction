@@ -71,6 +71,14 @@ collect_predictions(lr_fit) |>
   j_index(heart_disease, .pred_class, event_level="second")
 collect_predictions(lr_fit) |>
   pr_auc(heart_disease, .pred_Yes, event_level="second")
+collect_predictions(lr_fit) |>
+  kap(heart_disease, .pred_class, event_level="second")
+collect_predictions(lr_fit) |>
+  roc_curve(heart_disease, .pred_No) |>
+  write_csv("data/linear_roc.csv")
+collect_predictions(lr_fit) |>
+  pr_curve(heart_disease, .pred_Yes, event_level="second") |>
+  write_csv("data/linear_prc.csv")
 
 extract_workflow(lr_fit) |>
   extract_fit_parsnip() |>

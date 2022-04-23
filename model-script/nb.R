@@ -70,6 +70,14 @@ collect_predictions(nb_fit) |>
   j_index(heart_disease, .pred_class, event_level="second")
 collect_predictions(nb_fit) |>
   pr_auc(heart_disease, .pred_Yes, event_level="second")
+collect_predictions(nb_fit) |>
+  kap(heart_disease, .pred_class, event_level="second")
+collect_predictions(nb_fit) |>
+  roc_curve(heart_disease, .pred_No) |>
+  write_csv("data/nb_roc.csv")
+collect_predictions(nb_fit) |>
+  pr_curve(heart_disease, .pred_Yes, event_level="second") |>
+  write_csv("data/nb_prc.csv")
 
 collect_predictions(nb_fit) |>
   roc_curve(heart_disease, .pred_No) |>

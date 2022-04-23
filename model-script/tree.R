@@ -164,7 +164,7 @@ collect_predictions(stopping_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   write_csv("data/rf_roc.csv")
 collect_predictions(stopping_fit) |>
-  roc_curve(heart_disease, .pred_Yes, event_level="second") |>
+  pr_curve(heart_disease, .pred_Yes, event_level="second") |>
   write_csv("data/rf_prc.csv")
 
 extract_workflow(stopping_fit) |>

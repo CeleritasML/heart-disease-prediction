@@ -157,6 +157,10 @@ collect_predictions(stopping_fit) |>
   write_csv("data/xgboost_roc.csv")
 
 collect_predictions(stopping_fit) |>
+  pr_curve(heart_disease, .pred_Yes, event_level = "second") |>
+  write_csv("data/xgboost_prc.csv")
+
+collect_predictions(stopping_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   ggplot(aes(1 - specificity, sensitivity)) +
   geom_abline(lty = 2, color = "gray80", size = 1.5) +
@@ -164,9 +168,54 @@ collect_predictions(stopping_fit) |>
   coord_equal() +
   labs(color = NULL)
 
-collect_predictions(stopping_fit) |>
-  conf_mat(heart_disease, .pred_class) |>
-  autoplot()
+# collect_predictions(stopping_fit) |>
+#   conf_mat(heart_disease, .pred_class) |>
+#   autoplot()
 
 save.image("data/xgboost_w_early_stopping.RData")
 load("data/xgboost_w_early_stopping.RData")
+
+lda_df <- read_csv("data/lda_roc.csv") |>
+  mutate(method="lda")
+xgboost_df <- read_csv("data/xgboost_roc.csv") |>
+  mutate(method="xgboost")
+nb_df <- read_csv("data/nb_roc.csv") |>
+  mutate(method="nb")
+linear_df <- read_csv("data/linear_roc.csv") |>
+  mutate(method="linear")
+rf_df <- read_csv("data/rf_roc.csv") |>
+  mutate(method="rf")
+dat2 <- bind_rows(lda_df, xgboost_df, nb_df, linear_df, rf_df)
+
+dat2 |>
+  ggplot(aes(1 - specificity, sensitivity, color = method)) +
+  geom_abline(lty = 2, color = "gray80", size = 1) +
+  geom_path(alpha = 0.8, size = 0.8) +
+  coord_equal() +
+  labs(color = NULL,
+       title = "ROC-AUC Comparison")
+
+ggsave("roc_auc.png", width = 8, height = 8)
+
+lda_prc <- read_csv("data/lda_prc.csv") |>
+  mutate(method="lda")
+xgboost_prc <- read_csv("data/xgboost_prc.csv") |>
+  mutate(method="xgboost")
+nb_prc <- read_csv("data/nb_prc.csv") |>
+  mutate(method="nb")
+linear_prc <- read_csv("data/linear_prc.csv") |>
+  mutate(method="linear")
+rf_prc <- read_csv("data/rf_prc.csv") |>
+  mutate(method="rf")
+dat3 <- bind_rows(lda_prc, xgboost_prc, nb_prc, linear_prc, rf_prc)
+
+dat3 |>
+  ggplot(aes(recall, precision, color = method)) +
+  geom_path(alpha = 0.8, size = 0.8) +
+  coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(color = NULL,
+       title = "Precision-Recall Curve Comparison")
+
+ggsave("prc.png", width = 8, height = 8)
+
+

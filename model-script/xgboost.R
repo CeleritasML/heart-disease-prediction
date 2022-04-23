@@ -57,25 +57,25 @@ dat <- dat |>
 tidymodels_prefer()
 
 set.seed(2022)
-heart_split <- initial_split(data = dat, prop = 0.8)
+heart_split <- initial_split(data = dat, prop = 0.8, strata = heart_disease)
 heart_train <- training(heart_split)
 heart_test <- testing(heart_split)
 heart_metrics <- metric_set(accuracy, roc_auc, mn_log_loss)
 
 set.seed(2023)
-heart_folds <- vfold_cv(heart_train, v = 10)
+heart_folds <- vfold_cv(heart_train, v = 10, strata = heart_disease)
 
-heart_train |>
-  ggplot(aes(x = bmi, y = physical_health, color = heart_disease)) +
-  geom_point(alpha = 0.5, size = 0.5) +
-  labs(x = "BMI", y = "Physical Health") +
-  theme_minimal()
+# heart_train |>
+#   ggplot(aes(x = bmi, y = physical_health, color = heart_disease)) +
+#   geom_point(alpha = 0.5, size = 0.5) +
+#   labs(x = "BMI", y = "Physical Health") +
+#   theme_minimal()
 
-heart_train |>
-  ggplot(aes(x = age_category, fill = heart_disease)) +
-  geom_bar(alpha = 0.5, position = "identity") +
-  labs(x = "Age Category", fill = NULL) +
-  theme_minimal()
+# heart_train |>
+#   ggplot(aes(x = age_category, fill = heart_disease)) +
+#   geom_bar(alpha = 0.5, position = "identity") +
+#   labs(x = "Age Category", fill = NULL) +
+#   theme_minimal()
 
 heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
   step_dummy(all_nominal_predictors(), one_hot=TRUE) |>
@@ -85,10 +85,13 @@ prep(heart_recipe)
 
 # Tunable xgboost model with early stopping
 
+yes_no_ratio <- 27373/292422
+
 stopping_spec <- boost_tree(
   trees = tune(), mtry = tune(), learn_rate = tune(), stop_iter = tune()
 ) |>
-  set_engine("xgboost", validation = 0.1) |>
+  set_engine("xgboost", validation = 0.1,
+             scale_pos_weight = yes_no_ratio) |>
   set_mode("classification")
 
 stopping_grid <- grid_latin_hypercube(
@@ -119,8 +122,8 @@ toc()
 
 # approximately 1000 seconds
 
-autoplot(stopping_rs) +
-  geom_line()
+# autoplot(stopping_rs) +
+#   geom_line()
 
 show_best(stopping_rs, metric = "roc_auc")
 
@@ -130,9 +133,28 @@ stopping_fit <- early_stop_wf |>
 
 collect_metrics(stopping_fit)
 
-extract_workflow(stopping_fit) |>
-  extract_fit_parsnip() |>
-  vip(num_features = 15, geom = "point")
+# extract_workflow(stopping_fit) |>
+#   extract_fit_parsnip() |>
+#   vip(num_features = 15, geom = "point")
+
+collect_predictions(stopping_fit) |>
+  conf_mat(heart_disease, .pred_class)
+
+collect_predictions(stopping_fit) |>
+  recall(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  precision(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  j_index(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  pr_auc(heart_disease, .pred_Yes, event_level = "second")
+
+collect_predictions(stopping_fit) |>
+  kap(heart_disease, .pred_class)
+
+collect_predictions(stopping_fit) |>
+  roc_curve(heart_disease, .pred_No) |>
+  write_csv("data/xgboost_roc.csv")
 
 collect_predictions(stopping_fit) |>
   roc_curve(heart_disease, .pred_No) |>

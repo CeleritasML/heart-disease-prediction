@@ -1,10 +1,8 @@
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, janitor, tictoc, skimr, vip)
+pacman::p_load(tidyverse, tidymodels, janitor, themis, ROSE, vip)
 
 dat <- read_csv("data/heart_2020_cleaned.csv") |>
   clean_names()
-
-# skim(dat)
 
 dat <- dat |>
   mutate(heart_disease = as_factor(heart_disease),
@@ -31,44 +29,48 @@ dat <- dat |>
 tidymodels_prefer()
 
 set.seed(2022)
-heart_split <- initial_split(data = dat, prop = 0.8)
+heart_split <- initial_split(data = dat, prop = 0.8, strata = heart_disease)
 heart_train <- training(heart_split)
 heart_test <- testing(heart_split)
-heart_metrics <- metric_set(accuracy, roc_auc, mn_log_loss)
 
 set.seed(2023)
-heart_folds <- vfold_cv(heart_train, v = 10)
-
-heart_train |>
-  ggplot(aes(x = bmi, y = physical_health, color = heart_disease)) +
-  geom_point(alpha = 0.5, size = 0.5) +
-  labs(x = "BMI", y = "Physical Health") +
-  theme_minimal()
-
-heart_train |>
-  ggplot(aes(x = age_category, fill = heart_disease)) +
-  geom_bar(alpha = 0.5, position = "identity") +
-  labs(x = "Age Category", fill = NULL) +
-  theme_minimal()
+heart_folds <- vfold_cv(heart_train, v = 10, strata = heart_disease)
 
 heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
   step_dummy(all_nominal_predictors(), one_hot=TRUE) |>
-  step_zv(all_predictors()) # precautionary step to remove variables only containing a single value
+  step_zv(all_predictors()) |> # precautionary step to remove variables only containing a single value
+  step_rose(heart_disease)
 
 prep(heart_recipe)
 
-lr_model <- logistic_reg() %>%
-  set_engine("glm") %>%
-  set_mode("classification")
+lr_model <- logistic_reg()
 
 lr_wf <- workflow(heart_recipe, lr_model)
 
 doParallel::registerDoParallel()
 
+heart_metrics <- metric_set(recall, precision, j_index, roc_auc)
+set.seed(2180)
+lr_rose_res <- fit_resamples(
+  lr_wf, 
+  resamples = heart_folds, 
+  metrics = heart_metrics
+)
+
 lr_fit <- lr_wf |>
   last_fit(heart_split)
 
 collect_metrics(lr_fit)
+collect_predictions(lr_fit) |>
+  conf_mat(heart_disease, .pred_class)
+collect_predictions(lr_fit) |>
+  recall(heart_disease, .pred_class, event_level="second")
+collect_predictions(lr_fit) |>
+  precision(heart_disease, .pred_class, event_level="second")
+collect_predictions(lr_fit) |>
+  j_index(heart_disease, .pred_class, event_level="second")
+collect_predictions(lr_fit) |>
+  pr_auc(heart_disease, .pred_Yes, event_level="second")
 
 extract_workflow(lr_fit) |>
   extract_fit_parsnip() |>
@@ -82,10 +84,6 @@ collect_predictions(lr_fit) |>
   geom_path(alpha = 0.8, size = 1, color = "royalblue") +
   coord_equal() +
   labs(color = NULL)
-
-collect_predictions(lr_fit) |>
-  conf_mat(heart_disease, .pred_class) |>
-  autoplot()
 
 save.image("data/linear_model.RData")
 load("data/linear_model.RData")

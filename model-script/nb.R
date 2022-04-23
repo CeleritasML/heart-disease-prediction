@@ -1,11 +1,11 @@
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, tidymodels, janitor, themis, ROSE, parsnip, discrim, MASS)
+pacman::p_load(tidyverse, tidymodels, janitor, themis, ROSE, parsnip, discrim)
 
 dat <- read_csv("data/heart_2020_cleaned.csv") |>
   clean_names()
 
 dat <- dat |>
-  mutate(heart_disease = as_factor(heart_disease),
+  mutate(heart_disease = factor(heart_disease),
          smoking = as_factor(smoking),
          alcohol_drinking = as_factor(alcohol_drinking),
          stroke = as_factor(stroke),
@@ -37,43 +37,41 @@ set.seed(2023)
 heart_folds <- vfold_cv(heart_train, v = 10, strata = heart_disease)
 
 heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
-  step_dummy(all_nominal_predictors(), one_hot=TRUE) |>
   step_zv(all_predictors()) |> # precautionary step to remove variables only containing a single value
   step_rose(heart_disease)
 
 prep(heart_recipe)
 
-# LDA
-lda_model <- discrim_linear()
+nb_model <- naive_Bayes()
 
-lda_wf <- workflow(heart_recipe, lda_model)
+nb_wf <- workflow(heart_recipe, nb_model)
 
 doParallel::registerDoParallel()
 
 heart_metrics <- metric_set(recall, precision, j_index, roc_auc)
 set.seed(2180)
-lda_rose_res <- fit_resamples(
-  lda_wf, 
+nb_rose_res <- fit_resamples(
+  nb_wf, 
   resamples = heart_folds, 
   metrics = heart_metrics
 )
 
-lda_fit <- lda_wf |>
+nb_fit <- nb_wf |>
   last_fit(heart_split)
 
-collect_metrics(lda_fit)
-collect_predictions(lda_fit) |>
+collect_metrics(nb_fit)
+collect_predictions(nb_fit) |>
   conf_mat(heart_disease, .pred_class)
-collect_predictions(lda_fit) |>
+collect_predictions(nb_fit) |>
   recall(heart_disease, .pred_class, event_level="second")
-collect_predictions(lda_fit) |>
+collect_predictions(nb_fit) |>
   precision(heart_disease, .pred_class, event_level="second")
-collect_predictions(lda_fit) |>
+collect_predictions(nb_fit) |>
   j_index(heart_disease, .pred_class, event_level="second")
-collect_predictions(lda_fit) |>
+collect_predictions(nb_fit) |>
   pr_auc(heart_disease, .pred_Yes, event_level="second")
 
-collect_predictions(lda_fit) |>
+collect_predictions(nb_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   ggplot(aes(1 - specificity, sensitivity)) +
   geom_abline(lty = 2, color = "gray80", size = 1.5) +
@@ -81,5 +79,5 @@ collect_predictions(lda_fit) |>
   coord_equal() +
   labs(color = NULL)
 
-save.image("data/da_model.RData")
-load("data/da_model.RData")
+save.image("data/naive_bayes.RData")
+load("data/naive_bayes.RData")

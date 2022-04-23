@@ -2,6 +2,31 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, tidymodels, janitor,
                skimr, tictoc, vip)
 
+font_add_google(name = "Roboto Mono", family = "Roboto Mono")
+
+# Set ggplot theme
+theme_set(theme_minimal(base_family = "Roboto Mono"))
+theme_update(
+  panel.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+  plot.background = element_rect(fill = "#fbf9f4", color = "#fbf9f4"),
+  panel.border = element_rect(fill = NA, color = NA),
+  panel.grid.major.x = element_blank(),
+  panel.grid.major.y = element_line(linetype = "dashed"),
+  panel.grid.minor = element_blank(),
+  panel.grid = element_line(color = "#b4aea9"),
+  axis.text.x = element_text(size = 10),
+  axis.text.y = element_text(size = 10),
+  axis.title.x = element_text(size = 13, colour = "#495057", face = "bold"),
+  axis.title.y = element_text(size = 13, colour = "#495057",  margin = margin(r = 10), face = "bold"),
+  axis.line = element_line(colour = "grey50"),
+  legend.title = element_text(size = 13, face = "bold", colour = "#495057"),
+  legend.text = element_text(size = 10, color = "#495057"), 
+  plot.title = element_text(hjust = 0.5, size = 15, face = "bold", color = "#2a475e"),
+  plot.caption = element_text(family = "Special Elite", size = 10, color = "grey70", face = "bold",
+                              hjust = .5, margin = margin(5, 0, 20, 0)),
+  plot.margin = margin(10, 25, 10, 25),
+)
+
 dat <- read_csv("data/heart_2020_cleaned.csv") |>
   clean_names()
 
@@ -32,25 +57,25 @@ dat <- dat |>
 tidymodels_prefer()
 
 set.seed(2022)
-heart_split <- initial_split(data = dat, prop = 0.8)
+heart_split <- initial_split(data = dat, prop = 0.8, strata = heart_disease)
 heart_train <- training(heart_split)
 heart_test <- testing(heart_split)
 heart_metrics <- metric_set(accuracy, roc_auc, mn_log_loss)
 
 set.seed(2023)
-heart_folds <- vfold_cv(heart_train, v = 10)
+heart_folds <- vfold_cv(heart_train, v = 10, strata = heart_disease)
 
-heart_train |>
-  ggplot(aes(x = bmi, y = physical_health, color = heart_disease)) +
-  geom_point(alpha = 0.5, size = 0.5) +
-  labs(x = "BMI", y = "Physical Health") +
-  theme_minimal()
+# heart_train |>
+#   ggplot(aes(x = bmi, y = physical_health, color = heart_disease)) +
+#   geom_point(alpha = 0.5, size = 0.5) +
+#   labs(x = "BMI", y = "Physical Health") +
+#   theme_minimal()
 
-heart_train |>
-  ggplot(aes(x = age_category, fill = heart_disease)) +
-  geom_bar(alpha = 0.5, position = "identity") +
-  labs(x = "Age Category", fill = NULL) +
-  theme_minimal()
+# heart_train |>
+#   ggplot(aes(x = age_category, fill = heart_disease)) +
+#   geom_bar(alpha = 0.5, position = "identity") +
+#   labs(x = "Age Category", fill = NULL) +
+#   theme_minimal()
 
 heart_recipe <- recipe(heart_disease ~ ., data = heart_train) |>
   step_dummy(all_nominal_predictors(), one_hot=TRUE) |>
@@ -60,10 +85,13 @@ prep(heart_recipe)
 
 # Tunable xgboost model with early stopping
 
+yes_no_ratio <- 27373/292422
+
 stopping_spec <- boost_tree(
   trees = tune(), mtry = tune(), learn_rate = tune(), stop_iter = tune()
 ) |>
-  set_engine("xgboost", validation = 0.1) |>
+  set_engine("xgboost", validation = 0.1,
+             scale_pos_weight = yes_no_ratio) |>
   set_mode("classification")
 
 stopping_grid <- grid_latin_hypercube(
@@ -94,9 +122,8 @@ toc()
 
 # approximately 1000 seconds
 
-autoplot(stopping_rs) +
-  geom_line() +
-  theme_minimal()
+# autoplot(stopping_rs) +
+#   geom_line()
 
 show_best(stopping_rs, metric = "roc_auc")
 
@@ -106,22 +133,89 @@ stopping_fit <- early_stop_wf |>
 
 collect_metrics(stopping_fit)
 
-extract_workflow(stopping_fit) |>
-  extract_fit_parsnip() |>
-  vip(num_features = 17, geom = "point") +
-  theme_minimal()
+# extract_workflow(stopping_fit) |>
+#   extract_fit_parsnip() |>
+#   vip(num_features = 15, geom = "point")
+
+collect_predictions(stopping_fit) |>
+  conf_mat(heart_disease, .pred_class)
+
+collect_predictions(stopping_fit) |>
+  recall(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  precision(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  j_index(heart_disease, .pred_class, event_level = "second")
+collect_predictions(stopping_fit) |>
+  pr_auc(heart_disease, .pred_Yes, event_level = "second")
+
+collect_predictions(stopping_fit) |>
+  kap(heart_disease, .pred_class)
+
+collect_predictions(stopping_fit) |>
+  roc_curve(heart_disease, .pred_No) |>
+  write_csv("data/xgboost_roc.csv")
+
+collect_predictions(stopping_fit) |>
+  pr_curve(heart_disease, .pred_Yes, event_level = "second") |>
+  write_csv("data/xgboost_prc.csv")
 
 collect_predictions(stopping_fit) |>
   roc_curve(heart_disease, .pred_No) |>
   ggplot(aes(1 - specificity, sensitivity)) +
   geom_abline(lty = 2, color = "gray80", size = 1.5) +
-  geom_path(alpha = 0.8, size = 1, color = "royalblue") +
+  geom_path(alpha = 0.8, size = 1, color = "grey") +
   coord_equal() +
   labs(color = NULL)
 
-collect_predictions(stopping_fit) |>
-  conf_mat(heart_disease, .pred_class) |>
-  autoplot()
+# collect_predictions(stopping_fit) |>
+#   conf_mat(heart_disease, .pred_class) |>
+#   autoplot()
 
 save.image("data/xgboost_w_early_stopping.RData")
 load("data/xgboost_w_early_stopping.RData")
+
+lda_df <- read_csv("data/lda_roc.csv") |>
+  mutate(method="lda")
+xgboost_df <- read_csv("data/xgboost_roc.csv") |>
+  mutate(method="xgboost")
+nb_df <- read_csv("data/nb_roc.csv") |>
+  mutate(method="nb")
+linear_df <- read_csv("data/linear_roc.csv") |>
+  mutate(method="linear")
+rf_df <- read_csv("data/rf_roc.csv") |>
+  mutate(method="rf")
+dat2 <- bind_rows(lda_df, xgboost_df, nb_df, linear_df, rf_df)
+
+dat2 |>
+  ggplot(aes(1 - specificity, sensitivity, color = method)) +
+  geom_abline(lty = 2, color = "gray80", size = 1) +
+  geom_path(alpha = 0.8, size = 0.8) +
+  coord_equal() +
+  labs(color = NULL,
+       title = "ROC-AUC Comparison")
+
+ggsave("roc_auc.png", width = 8, height = 8)
+
+lda_prc <- read_csv("data/lda_prc.csv") |>
+  mutate(method="lda")
+xgboost_prc <- read_csv("data/xgboost_prc.csv") |>
+  mutate(method="xgboost")
+nb_prc <- read_csv("data/nb_prc.csv") |>
+  mutate(method="nb")
+linear_prc <- read_csv("data/linear_prc.csv") |>
+  mutate(method="linear")
+rf_prc <- read_csv("data/rf_prc.csv") |>
+  mutate(method="rf")
+dat3 <- bind_rows(lda_prc, xgboost_prc, nb_prc, linear_prc, rf_prc)
+
+dat3 |>
+  ggplot(aes(recall, precision, color = method)) +
+  geom_path(alpha = 0.8, size = 0.8) +
+  coord_fixed(xlim = c(0, 1), ylim = c(0, 1)) +
+  labs(color = NULL,
+       title = "Precision-Recall Curve Comparison")
+
+ggsave("prc.png", width = 8, height = 8)
+
+

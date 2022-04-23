@@ -81,14 +81,15 @@ dat <- dat |>
 tidymodels_prefer()
 
 set.seed(2022)
-dat = dat[sample(nrow(dat), 20000), ]
-heart_split <- initial_split(data = dat, prop = 0.8)
+heart_split <- initial_split(data = dat, prop = 0.8, strata = heart_disease)
 heart_train <- training(heart_split)
 heart_test <- testing(heart_split)
-heart_metrics <- metric_set(accuracy, roc_auc, mn_log_loss)
+
+heart_cv_split <- initial_split(data = heart_train, prop = 0.1, strata = heart_disease)
+heart_cv <- training(heart_cv_split)
 
 set.seed(2023)
-heart_folds <- vfold_cv(heart_train, v = 5)
+heart_folds <- vfold_cv(heart_cv, v = 10, strata = heart_disease)
 
 #################
 ## build model ##
@@ -104,12 +105,13 @@ prep(heart_recipe)
 # Tunable tree model with early stopping
 
 stopping_spec <- rand_forest(
-  trees = 500, mtry = tune()) |>
-  set_engine("randomForest", validation = 0.2) |>
+  trees = tune(), mtry = tune()) |>
+  set_engine("randomForest", validation = 0.2, classwt=c(27373, 292422)) |>
   set_mode("classification")
 
 stopping_grid <- grid_latin_hypercube(
-  mtry(range = c(7L,10L)),
+  trees(range = c(50, 500)),
+  mtry(range = c(2L, 10L)),
   size = 5
 )
 
@@ -118,6 +120,8 @@ stopping_grid <- grid_latin_hypercube(
 early_stop_wf <- workflow(heart_recipe, stopping_spec)
 
 doParallel::registerDoParallel()
+
+heart_metrics <- metric_set(recall, precision, j_index, roc_auc)
 
 set.seed(1234)
 tic("total")
@@ -137,13 +141,31 @@ autoplot(stopping_rs) +
   geom_line() 
 
 
-show_best(stopping_rs, metric = "roc_auc")
+show_best(stopping_rs, metric = "recall")
 
 stopping_fit <- early_stop_wf |>
-  finalize_workflow(select_best(stopping_rs, "roc_auc")) |>
+  finalize_workflow(select_best(stopping_rs, "recall")) |>
   last_fit(heart_split)
 
 collect_metrics(stopping_fit)
+collect_predictions(stopping_fit) |>
+  conf_mat(heart_disease, .pred_class)
+collect_predictions(stopping_fit) |>
+  recall(heart_disease, .pred_class, event_level="second")
+collect_predictions(stopping_fit) |>
+  precision(heart_disease, .pred_class, event_level="second")
+collect_predictions(stopping_fit) |>
+  j_index(heart_disease, .pred_class, event_level="second")
+collect_predictions(stopping_fit) |>
+  pr_auc(heart_disease, .pred_Yes, event_level="second")
+collect_predictions(stopping_fit) |>
+  kap(heart_disease, .pred_class, event_level="second")
+collect_predictions(stopping_fit) |>
+  roc_curve(heart_disease, .pred_No) |>
+  write_csv("data/rf_roc.csv")
+collect_predictions(stopping_fit) |>
+  roc_curve(heart_disease, .pred_Yes, event_level="second") |>
+  write_csv("data/rf_prc.csv")
 
 extract_workflow(stopping_fit) |>
   extract_fit_parsnip() |>
